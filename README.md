@@ -6,9 +6,6 @@ EditorialDesk lets users ask natural-language questions about a collection of Ma
 
 Built with **Python, Streamlit, scikit-learn, and the OpenAI Responses API**.
 
-> [!NOTE]
-> This repository is a proof of concept. The three included editorial-policy documents are **fictional examples**, not official policies of VMN Media or any other organization.
-
 ## Features
 
 - **Document-based Q&A:** Ask questions in a simple Streamlit chat interface.
