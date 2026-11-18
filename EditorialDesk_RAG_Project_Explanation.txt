@@ -1,0 +1,398 @@
+EDITORIALDESK — MINI RAG ASSISTANT
+A Beginner-Friendly Project Explanation
+=========================================
+
+1. THE PROJECT IN ONE SENTENCE
+------------------------------
+EditorialDesk is a small website where someone can ask a question about editorial
+policies, and the program looks through example documents to find useful
+information before optionally asking an AI model to write a sourced answer.
+
+This is a demonstration project, not a production system. Its three policy
+documents are fictional and are NOT official VMN Media policies.
+
+
+2. WHAT PROBLEM ARE WE SOLVING?
+------------------------------
+Imagine you work in a media company. The team has written policies about:
+- checking facts before publication;
+- using AI when drafting articles;
+- correcting mistakes;
+- preparing research briefs and charts.
+
+A new employee asks: "Can AI-generated articles be published without review?"
+
+Without a tool, the employee might open several files and manually search for
+the answer. With EditorialDesk, they type the question into a chat box. The
+program retrieves the most relevant policy sections and, if configured with an
+OpenAI API key, asks a language model to turn those sections into a brief answer.
+
+The goal is to make information easier to find and understand, especially for
+people who are not technical specialists.
+
+
+3. WHAT DOES RAG MEAN?
+---------------------
+RAG stands for Retrieval-Augmented Generation.
+
+Retrieval: Find useful passages in a set of documents.
+Augmented: Give those passages to a language model as additional context.
+Generation: Ask the language model to write an answer based on that context.
+
+Think of a student answering an open-book exam question: the student first
+finds the relevant page, reads it, and then answers the question. RAG follows
+a similar pattern.
+
+Unlike a chatbot relying only on information learned during training, a RAG
+application supplies relevant external text during the question-answering step.
+This helps ground the answer in documents, though it does not guarantee that
+every answer will be correct.
+
+
+4. HOW A QUESTION MOVES THROUGH EDITORIALDESK
+----------------------------------------------
+
+   User types a question in the Streamlit website
+                     |
+                     v
+   Program searches the sections of three Markdown documents
+                     |
+                     v
+   TF-IDF and cosine similarity rank possible matches
+                     |
+                     v
+   The best matching passages are selected (up to three)
+                     |
+          +----------+-----------+
+          |                      |
+          v                      v
+   No API key                 API key available
+          |                      |
+          v                      v
+   Show retrieval             Send question + passages
+   preview and evidence       to an OpenAI language model
+                                 |
+                                 v
+                            Display generated answer
+                            and retrieved evidence
+
+If the search finds no passage above the relevance threshold, the code returns
+a fallback response instead of asking the model to invent an answer.
+
+
+5. WHAT FILES ARE IN THE PROJECT?
+---------------------------------
+app.py
+  The interface. Streamlit draws the title, sidebar, question box, chat
+  messages, and source-evidence panel. It calls the functions in rag.py.
+
+rag.py
+  The main search and answer logic. It loads documents, divides them into
+  sections, turns text into TF-IDF representations, ranks relevant passages,
+  and calls the OpenAI API if generation is enabled.
+
+knowledge/
+  A folder with the fictional documents that the assistant searches:
+  - 01_editorial_standards.md
+  - 02_ai_guidelines.md
+  - 03_research_workflow.md
+
+.env.example
+  A template for the settings file. Copy it to a file named exactly .env,
+  then add a real API key there if you want model-generated answers.
+
+requirements.txt
+  Lists Python libraries to install.
+
+tests/
+  Contains automated checks for loading passages, retrieval ranking,
+  out-of-domain behavior, and construction of a model request.
+
+README.md
+  Contains installation instructions and a short technical overview.
+
+
+6. STEP ONE: LOADING AND SPLITTING DOCUMENTS
+--------------------------------------------
+The knowledge base contains three Markdown files. Markdown is a simple text
+format where lines beginning with # and ## represent headings.
+
+The load_passages() function in rag.py reads each file and splits it at the
+headings. Each nonempty section becomes a searchable passage with:
+- the filename (source),
+- the section heading,
+- the section text.
+
+The current sample documents create nine searchable sections.
+
+Why split documents into passages? If a policy document is long, searching its
+individual sections is more precise than treating the whole file as a single
+piece of text. A question about corrections should retrieve the corrections
+section, not every policy in the handbook.
+
+
+7. STEP TWO: SEARCHING WITH TF-IDF
+---------------------------------
+Computers need a numerical representation of text to compare passages.
+EditorialDesk uses TF-IDF, short for Term Frequency–Inverse Document Frequency.
+
+At a basic level, TF-IDF gives more importance to words or phrases that help
+distinguish one passage from the others. The project also looks at pairs of
+words (bigrams) and ignores common English stop words.
+
+Example:
+Question: "How should editors correct factual errors?"
+Likely relevant words: "editors", "correct", "factual", "errors".
+
+The program converts the question and each document section into numerical
+vectors. There is no need to calculate the numbers by hand: the scikit-learn
+library does that work.
+
+Important distinction: this is a simple word-based retrieval system. It does
+not use a semantic embedding model or vector database.
+
+
+8. STEP THREE: RANKING WITH COSINE SIMILARITY
+--------------------------------------------
+Cosine similarity compares how closely the question's TF-IDF vector aligns
+with each passage's vector.
+
+A higher similarity score means the words and phrases in a passage match the
+question better according to this search method. Scores are NOT probabilities
+that an answer is factually correct.
+
+In one of the project's tests of a question about AI-generated publication,
+the app returned passages such as:
+- AI-assisted drafting: similarity around 0.42
+- AI transparency: similarity around 0.22
+
+The "AI-assisted drafting" passage ranks higher because it is a more direct
+match for the question.
+
+In rag.py, the retrieval settings default to:
+- top_k = 3: show at most three passages;
+- min_score = 0.10: exclude matches below this similarity cutoff.
+
+The cutoff is a simple heuristic. An unrelated passage can sometimes pass,
+and a relevant passage can sometimes be missed because it uses different words.
+
+
+9. STEP FOUR: GENERATING AN ANSWER WITH AN LLM
+----------------------------------------------
+LLM stands for Large Language Model. A language model can use text instructions
+and context to write a natural-language response.
+
+If OPENAI_API_KEY is set, rag.py uses the OpenAI Responses API to send:
+- the user's question;
+- the retrieved document passages;
+- instructions to answer using only those passages, cite them as [1], [2],
+  etc., and acknowledge when information is missing.
+
+The default model in the project is gpt-4.1-mini, although it can be changed
+using OPENAI_MODEL in the .env file.
+
+Example:
+Question: "Can AI-generated articles be published without human review?"
+
+Relevant fictional policy: "AI-generated text must not be published without
+editorial review."
+
+A possible generated answer:
+"No. A human editor must review AI-generated text before publication [1]."
+
+The model wording can vary. Citation markers are requested in the prompt;
+the application does not independently verify that every generated citation
+fully supports the associated statement.
+
+The model is accessed through an external API, so generation requires a valid
+API key, access to the chosen model, and possibly paid API credits. It is not
+running a language model locally on your computer.
+
+
+10. WHAT IF THERE IS NO API KEY?
+-------------------------------
+The program still works as a document search demonstration.
+
+Without OPENAI_API_KEY, the application shows a "retrieval preview" and the
+matching sections in an expandable "Retrieved evidence" panel. It does NOT
+write an LLM-generated answer.
+
+This is a good way to test the first part of RAG without making API calls.
+
+
+11. WHAT IF THE DOCUMENTS DO NOT CONTAIN THE ANSWER?
+----------------------------------------------------
+Suppose someone asks: "What is VMN Media's revenue target for 2027?"
+
+That information is not in the fictional knowledge base. If no passage passes
+the similarity threshold, the retrieval system returns no matches. In
+generation mode, the code then returns:
+
+"I couldn't find enough information in the provided documents to answer that."
+
+The language model is also instructed to say when evidence is insufficient.
+
+This reduces the risk of hallucination (an AI producing an unsupported answer),
+but does not eliminate that risk. Reliable production systems need stronger
+evaluation and verification.
+
+
+12. HOW TO RUN THE APPLICATION ON WINDOWS
+-----------------------------------------
+1. Extract the project ZIP to a folder.
+2. Open PowerShell inside the folder containing app.py.
+3. Install the required libraries:
+
+   py -m pip install -r requirements.txt
+
+4. Start the website:
+
+   py -m streamlit run app.py
+
+5. Open the address printed in PowerShell, usually:
+
+   http://localhost:8501
+
+6. Enter a question in the text box at the bottom.
+
+To enable generated answers:
+- Copy .env.example to .env.
+- Edit the .env file to contain your own settings, for example:
+
+   OPENAI_API_KEY=YOUR_REAL_KEY_GOES_HERE
+   OPENAI_MODEL=gpt-4.1-mini
+
+- Save .env and restart Streamlit.
+
+Do not post your API key online, send it in a chat, or commit .env to GitHub.
+
+Note: On some Windows devices, an application policy blocks pip.exe. In that
+case, "py -m pip" may work because it invokes pip through Python. Do not
+bypass organizational security policies.
+
+
+13. QUESTIONS TO TRY
+--------------------
+Basic retrieval:
+1. Can AI-generated articles be published without human review?
+2. How should editors correct factual errors?
+3. What should analysts check before releasing a chart?
+4. What is the procedure for using anonymous sources?
+
+Questions requiring a summary:
+5. How can AI help with article writing while keeping editors responsible?
+6. What should researchers include in a research brief?
+7. How should analysts update recurring reports?
+
+Out-of-scope questions:
+8. What is the gravity on Europa?
+9. What is the salary of a VMN Media journalist?
+
+For questions 8 and 9, the program should avoid giving unsupported answers
+based on these documents. Because retrieval is lexical, always inspect the
+retrieved evidence rather than assuming the fallback mechanism is perfect.
+
+
+14. WHAT HAS BEEN TESTED?
+-------------------------
+The project includes five small automated tests. They verify:
+- that the example files can be loaded;
+- that certain questions retrieve relevant passages;
+- that an unrelated question can be rejected;
+- that the model request is assembled correctly using a mocked API client.
+
+These tests do NOT prove the system works reliably with all questions. They
+also do NOT verify real model-generated responses or the validity of every
+citation. Those behaviors should be tested interactively once an API key is
+configured.
+
+To run the tests:
+
+   py -m unittest discover -s tests -v
+
+
+15. WHAT TECHNOLOGIES DID WE USE?
+--------------------------------
+Python:       General-purpose programming language used to build the project.
+Streamlit:    A Python framework that creates the browser interface.
+Markdown:     Simple text format used to store the example policies.
+scikit-learn: Python library providing TF-IDF and cosine similarity.
+OpenAI API:   External service used for optional LLM answer generation.
+python-dotenv: Loads environment settings (such as the API key) from .env.
+
+You did not train a new language model. You built an application that combines
+search with an existing language model. This is a useful distinction when
+explaining the work in an interview.
+
+
+16. WHAT ARE THE LIMITATIONS?
+-----------------------------
+This is a prototype with a small, fictional knowledge base.
+
+It does not yet include:
+- semantic embeddings or a dedicated vector database;
+- document upload through the website;
+- user login or permission controls;
+- secure handling policies for real confidential company documents;
+- production monitoring or persistent chat history;
+- measured answer-quality evaluation with real editors;
+- automatic verification that each generated claim is supported by a citation.
+
+The program is useful for learning how RAG works. It should not be described
+as a deployed or production-ready company system.
+
+
+17. HOW COULD IT BE IMPROVED?
+----------------------------
+An incremental development plan could be:
+
+Stage 1: Add more fictional documents and test more realistic questions.
+Stage 2: Replace TF-IDF with semantic embeddings for meaning-based search.
+Stage 3: Support document upload, with careful handling of private data.
+Stage 4: Add evaluation questions, measure answer quality, and review citations.
+Stage 5: Add authentication, access rules, monitoring and user feedback.
+
+A useful next step for a media company would be to run a pilot with editors,
+watch where they struggle, and use their feedback to improve the interface and
+retrieval quality.
+
+
+18. WHY THE PROJECT IS RELEVANT TO AN AI TOOLING ROLE
+-----------------------------------------------------
+For a job such as VMN Media's AI Tooling Lead, this prototype demonstrates the
+main building blocks behind an accessible internal AI assistant:
+- turning a user problem into a working interface;
+- searching documents instead of relying only on an LLM's memory;
+- connecting an application to an AI API;
+- showing source evidence so a user can inspect the result;
+- designing a useful fallback for questions without supporting information.
+
+It is a small learning project, not evidence of large-scale production deployment.
+Its value is the practical understanding it demonstrates.
+
+
+19. A SIMPLE INTERVIEW EXPLANATION
+----------------------------------
+"I built a small retrieval-augmented generation assistant for editorial teams.
+It answers natural-language questions using a set of fictional editorial
+policy documents. The program splits the documents into sections, uses TF-IDF
+and cosine similarity to find the most relevant passages, and uses the OpenAI
+API to generate an answer grounded in those passages. I built the interface
+in Streamlit and included source references, a retrieval-only mode, and
+fallback behavior when supporting information is missing. The prototype
+helped me understand how retrieval, LLM APIs and accessible interfaces fit
+together, and what additional testing and security would be needed before
+using this in a real organization."
+
+Only say you tested live LLM generation once you have actually done so.
+
+
+20. THE ONE THING TO REMEMBER
+-----------------------------
+RAG is about finding the right information before asking an AI to answer.
+
+EditorialDesk uses this idea to turn a few policy documents into a small
+question-answering website, while making it possible for users to inspect
+which document sections were retrieved.
+
+END OF EXPLANATION
