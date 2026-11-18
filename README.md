@@ -218,4 +218,4 @@ EditorialDesk explores a practical question: **How can AI make internal knowledg
 
 ---
 
-**Project scope:** Personal demonstration / proof of concept. Not affiliated with or endorsed by VMN Media.
+**Project scope:** Personal demonstration / proof of concept. 
